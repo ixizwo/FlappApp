@@ -11,7 +11,11 @@
     "test": "vitest run --passWithNoTests",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "prisma:seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "ts-node --esm prisma/seed.ts"
   },
   "dependencies": {
     "@flappapp/shared": "workspace:*",

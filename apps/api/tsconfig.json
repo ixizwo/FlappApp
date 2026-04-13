@@ -9,7 +9,12 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "declaration": true,
-    "types": ["node"]
+    "types": ["node"],
+    // Prisma-generated Client types are incompatible with
+    // exactOptionalPropertyTypes (optional fields are typed as `T` not
+    // `T | undefined`, but the client accepts `undefined` at runtime).
+    // Relax for the api app only — shared stays strict.
+    "exactOptionalPropertyTypes": false
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
