@@ -1,0 +1,416 @@
+// Prisma schema for the C4 architecture modeling app.
+//
+// Design notes:
+// - The model hierarchy (Org → Landscape → Domain → ModelObject) is enforced
+//   relationally, and ModelObject is self-referential to represent the
+//   C4 parent/child chain (System → App/Store → Component).
+// - Diagrams are *views* over the model; `DiagramNode` and `DiagramEdge`
+//   are purely presentational and never own identity for objects/connections.
+// - JSONB is used sparingly for truly free-form metadata (links, tags blob,
+//   waypoints, snapshot payloads). Query-critical fields stay columnar.
+//
+// See PLAN.md §3 for the high-level data model and invariants.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Workspaces
+// ──────────────────────────────────────────────────────────────────────
+
+model Organization {
+  id         String      @id @default(cuid())
+  name       String
+  slug       String      @unique
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  landscapes Landscape[]
+  teams      Team[]
+  members    Membership[]
+}
+
+model Landscape {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  domains        Domain[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model Domain {
+  id          String        @id @default(cuid())
+  landscapeId String
+  name        String
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  landscape   Landscape     @relation(fields: [landscapeId], references: [id], onDelete: Cascade)
+  objects     ModelObject[]
+  diagrams    Diagram[]
+  tags        Tag[]
+  snapshots   Snapshot[]
+  ownerTeamId String?
+  ownerTeam   Team?         @relation(fields: [ownerTeamId], references: [id])
+
+  @@unique([landscapeId, name])
+  @@index([landscapeId])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Core model: objects + connections (source of truth)
+// ──────────────────────────────────────────────────────────────────────
+
+enum ObjectType {
+  ACTOR
+  SYSTEM
+  APP
+  STORE
+  COMPONENT
+}
+
+enum ObjectStatus {
+  LIVE
+  FUTURE
+  DEPRECATED
+  REMOVED
+}
+
+enum ConnectionDirection {
+  OUTGOING
+  BIDIRECTIONAL
+  NONE
+}
+
+enum LineShape {
+  CURVED
+  STRAIGHT
+  SQUARE
+}
+
+model ModelObject {
+  id                    String       @id @default(cuid())
+  domainId              String
+  parentId              String?
+  type                  ObjectType
+  name                  String
+  internal              Boolean      @default(true)
+  status                ObjectStatus @default(LIVE)
+  displayDescription    String?      @db.VarChar(120)
+  detailedDescriptionMd String?
+  techChoiceId          String?
+  ownerTeamId           String?
+  links                 Json         @default("[]")
+  metadata              Json         @default("{}")
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  domain      Domain        @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  parent      ModelObject?  @relation("ModelObjectHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    ModelObject[] @relation("ModelObjectHierarchy")
+  techChoice  TechChoice?   @relation(fields: [techChoiceId], references: [id])
+  ownerTeam   Team?         @relation(fields: [ownerTeamId], references: [id])
+
+  // Connections authored here.
+  outgoing    Connection[] @relation("ConnectionSender")
+  incoming    Connection[] @relation("ConnectionReceiver")
+  via         Connection[] @relation("ConnectionVia")
+
+  diagramNodes DiagramNode[]
+  tagLinks     ModelObjectTag[]
+
+  // "Unique within scope" per PRD §4.1. Null parents collapse to null —
+  // Postgres treats NULLs as distinct, which matches "top-level objects
+  // are unique within their Domain" once we also enforce the Domain scope.
+  @@unique([domainId, parentId, name])
+  @@index([domainId])
+  @@index([parentId])
+  @@index([type])
+}
+
+model Connection {
+  id          String              @id @default(cuid())
+  senderId    String
+  receiverId  String
+  viaId       String?
+  direction   ConnectionDirection @default(OUTGOING)
+  status      ObjectStatus        @default(LIVE)
+  lineShape   LineShape           @default(CURVED)
+  description String?             @db.VarChar(500)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  sender   ModelObject  @relation("ConnectionSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver ModelObject  @relation("ConnectionReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  via      ModelObject? @relation("ConnectionVia", fields: [viaId], references: [id], onDelete: SetNull)
+
+  diagramEdges DiagramEdge[]
+  flowStepHighlights FlowStepEdgeHighlight[]
+
+  // Dedupe the logical (sender, receiver, via) triple.
+  @@unique([senderId, receiverId, viaId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([viaId])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Diagrams (views over the model)
+// ──────────────────────────────────────────────────────────────────────
+
+model Diagram {
+  id            String        @id @default(cuid())
+  domainId      String
+  scopeObjectId String?       // System for L2 diagrams, App/Store for L3
+  level         Int           // 1 | 2 | 3
+  name          String
+  pinned        Boolean       @default(false)
+  viewCount     Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  nodes  DiagramNode[]
+  edges  DiagramEdge[]
+  groups Group[]
+  flows  Flow[]
+
+  @@index([domainId])
+  @@index([level])
+  @@index([pinned])
+}
+
+model DiagramNode {
+  id            String  @id @default(cuid())
+  diagramId     String
+  modelObjectId String
+  x             Float
+  y             Float
+  w             Float   @default(180)
+  h             Float   @default(100)
+  groupId       String?
+
+  diagram     Diagram     @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  modelObject ModelObject @relation(fields: [modelObjectId], references: [id], onDelete: Cascade)
+  group       Group?      @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  flowStepHighlights FlowStepNodeHighlight[]
+
+  @@unique([diagramId, modelObjectId])
+  @@index([diagramId])
+}
+
+model DiagramEdge {
+  id           String  @id @default(cuid())
+  diagramId    String
+  connectionId String
+  sourceHandle String?
+  targetHandle String?
+  waypoints    Json    @default("[]")
+
+  diagram    Diagram    @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  connection Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([diagramId, connectionId])
+  @@index([diagramId])
+}
+
+enum GroupKind {
+  VPC
+  REGION
+  ENV
+  LOGICAL
+}
+
+model Group {
+  id            String     @id @default(cuid())
+  diagramId     String
+  parentGroupId String?
+  name          String
+  kind          GroupKind  @default(LOGICAL)
+  autosize      Boolean    @default(true)
+  x             Float      @default(0)
+  y             Float      @default(0)
+  w             Float      @default(400)
+  h             Float      @default(300)
+
+  diagram      Diagram       @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  parentGroup  Group?        @relation("GroupNesting", fields: [parentGroupId], references: [id], onDelete: Cascade)
+  childGroups  Group[]       @relation("GroupNesting")
+  nodes        DiagramNode[]
+
+  @@index([diagramId])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Visual storytelling
+// ──────────────────────────────────────────────────────────────────────
+
+model Flow {
+  id          String     @id @default(cuid())
+  diagramId   String
+  name        String
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  diagram Diagram    @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  steps   FlowStep[]
+
+  @@index([diagramId])
+}
+
+model FlowStep {
+  id          String  @id @default(cuid())
+  flowId     String
+  order       Int
+  title       String
+  description String?
+
+  flow             Flow                    @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  nodeHighlights   FlowStepNodeHighlight[]
+  edgeHighlights   FlowStepEdgeHighlight[]
+
+  @@unique([flowId, order])
+  @@index([flowId])
+}
+
+model FlowStepNodeHighlight {
+  stepId        String
+  diagramNodeId String
+
+  step        FlowStep    @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  diagramNode DiagramNode @relation(fields: [diagramNodeId], references: [id], onDelete: Cascade)
+
+  @@id([stepId, diagramNodeId])
+}
+
+model FlowStepEdgeHighlight {
+  stepId       String
+  connectionId String
+
+  step       FlowStep   @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  connection Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@id([stepId, connectionId])
+}
+
+model Tag {
+  id       String @id @default(cuid())
+  domainId String
+  name     String
+  color    String @default("#94a3b8")
+
+  domain  Domain           @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  objects ModelObjectTag[]
+
+  @@unique([domainId, name])
+  @@index([domainId])
+}
+
+model ModelObjectTag {
+  modelObjectId String
+  tagId         String
+
+  modelObject ModelObject @relation(fields: [modelObjectId], references: [id], onDelete: Cascade)
+  tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([modelObjectId, tagId])
+}
+
+model TechChoice {
+  id       String   @id @default(cuid())
+  name     String   @unique
+  category String
+  icon     String
+  objects  ModelObject[]
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// RBAC + users
+// ──────────────────────────────────────────────────────────────────────
+
+enum Role {
+  VIEWER
+  EDITOR
+  ADMIN
+}
+
+model User {
+  id        String       @id @default(cuid())
+  email     String       @unique
+  name      String?
+  createdAt DateTime     @default(now())
+  memberships Membership[]
+}
+
+model Team {
+  id             String        @id @default(cuid())
+  organizationId String
+  name           String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ownedDomains   Domain[]
+  ownedObjects   ModelObject[]
+
+  @@unique([organizationId, name])
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           Role         @default(VIEWER)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Snapshots, audit, sharing (Phases 6/8)
+// ──────────────────────────────────────────────────────────────────────
+
+model Snapshot {
+  id        String   @id @default(cuid())
+  domainId  String
+  name      String
+  payload   Json
+  createdAt DateTime @default(now())
+  domain    Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@index([domainId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String
+  diff       Json     @default("{}")
+  at         DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([at])
+}
+
+model ShareLink {
+  id        String    @id @default(cuid())
+  diagramId String
+  token     String    @unique
+  scopes    Json      @default("[]")
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([diagramId])
+}
