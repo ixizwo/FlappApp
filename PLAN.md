@@ -82,12 +82,14 @@ Invariants enforced in DB + service layer:
 - Docker Compose: postgres + meilisearch
 - GitHub Actions: install → typecheck → lint → unit → build
 
-### Phase 1 — Core Model & REST API
-- Full Prisma schema + migrations + seed
+### Phase 1 — Core Model & REST API ✅ (this commit)
+- Full Prisma schema + idempotent seed with a realistic C4 landscape
 - NestJS modules: organizations, landscapes, domains, model-objects, connections, tech-choices, tags
-- Validation, pagination, filtering
-- Implied-connection resolver wired into API
-- Auth.js email/OIDC, sessions, basic User/Team/Membership
+- Zod validation pipe shared with the web app via `@flappapp/shared`
+- C4 parent/child rules enforced at the service layer (covered by unit tests)
+- Implied-connection endpoint `GET /connections/implied?domainId=&level=` wired through the shared resolver
+- Deletion-impact preview (`GET /model-objects/:id/deletion-impact`) for "Delete from Model" warnings
+- Auth.js / OIDC deferred to Phase 8 (RBAC + SSO land together)
 
 ### Phase 2 — Model Management UI (no canvas yet)
 - App shell: workspace switcher, top bar, right-side context panel
