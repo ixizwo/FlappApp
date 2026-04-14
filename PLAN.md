@@ -91,13 +91,14 @@ Invariants enforced in DB + service layer:
 - Deletion-impact preview (`GET /model-objects/:id/deletion-impact`) for "Delete from Model" warnings
 - Auth.js / OIDC deferred to Phase 8 (RBAC + SSO land together)
 
-### Phase 2 — Model Management UI (no canvas yet)
+### Phase 2 — Model Management UI (no canvas yet) ✅
 - App shell: workspace switcher, top bar, right-side context panel
 - **Model Objects View** — virtualized hierarchical tree, bulk edit, duplicate, filters
-- **Connections List** — server-paginated table, full filters
-- **Diagrams Section** — list with sort/pin/group; create dialog
-- **Dependencies View** — incoming/outgoing/lower deps for any object
+- **Connections List** — server-paginated table, full filters, concrete/implied toggle
+- **Diagrams Section** — list with sort/pin/group; create dialog (stub — canvas in Phase 3)
+- **Dependencies View** — incoming/outgoing/via deps for any object
 - Command palette (`Cmd+K`)
+- 12 RTL component tests covering tree rows + toolbar wiring
 
 ### Phase 3 — Diagram Canvas MVP
 - React Flow custom nodes per C4 type with **12 anchorable handles** (6 for Actors)
