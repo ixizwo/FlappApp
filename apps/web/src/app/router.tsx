@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate, Outlet, type RouteObject } from 'react-r
 import { AppShell } from './AppShell.tsx';
 import { ConnectionsView } from '../pages/ConnectionsView.tsx';
 import { DependenciesView } from '../pages/DependenciesView.tsx';
+import { DiagramCanvasView } from '../pages/DiagramCanvasView.tsx';
 import { DiagramsView } from '../pages/DiagramsView.tsx';
 import { HomeView } from '../pages/HomeView.tsx';
 import { ModelObjectsView } from '../pages/ModelObjectsView.tsx';
@@ -29,6 +30,7 @@ const routes: RouteObject[] = [
           { path: 'objects', element: <ModelObjectsView /> },
           { path: 'connections', element: <ConnectionsView /> },
           { path: 'diagrams', element: <DiagramsView /> },
+          { path: 'diagrams/:diagramId', element: <DiagramCanvasView /> },
           { path: 'dependencies', element: <DependenciesView /> },
           { path: 'dependencies/:objectId', element: <DependenciesView /> },
         ],

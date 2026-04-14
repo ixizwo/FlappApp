@@ -145,6 +145,54 @@ export interface DeletionImpact {
   connectionIds: string[];
 }
 
+export interface DiagramSummary {
+  id: string;
+  domainId: string;
+  name: string;
+  level: C4Level;
+  scopeObjectId: string | null;
+  pinned: boolean;
+  viewCount: number;
+  updatedAt: string;
+  _count: { nodes: number; edges: number };
+}
+
+export interface DiagramNode {
+  id: string;
+  diagramId: string;
+  modelObjectId: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  groupId: string | null;
+  modelObject: ModelObject;
+}
+
+export interface DiagramEdge {
+  id: string;
+  diagramId: string;
+  connectionId: string;
+  sourceHandle: string | null;
+  targetHandle: string | null;
+  waypoints: { x: number; y: number }[];
+  connection: Connection;
+}
+
+export interface Diagram {
+  id: string;
+  domainId: string;
+  name: string;
+  level: C4Level;
+  scopeObjectId: string | null;
+  pinned: boolean;
+  viewCount: number;
+  createdAt: string;
+  updatedAt: string;
+  nodes: DiagramNode[];
+  edges: DiagramEdge[];
+}
+
 // ─────────────────────────────────────────────────────────────
 // Endpoint wrappers
 // ─────────────────────────────────────────────────────────────
@@ -195,6 +243,41 @@ export const api = {
     get: (id: string) => apiFetch<ModelObject>(`/model-objects/${id}`),
     deletionImpact: (id: string) =>
       apiFetch<DeletionImpact>(`/model-objects/${id}/deletion-impact`),
+    create: (input: {
+      domainId: string;
+      parentId: string | null;
+      type: ObjectType;
+      name: string;
+      internal?: boolean;
+      status?: ObjectStatus;
+      displayDescription?: string;
+      techChoiceId?: string | null;
+      tagIds?: string[];
+      links?: { label: string; url: string }[];
+      metadata?: Record<string, unknown>;
+    }) =>
+      apiFetch<ModelObject>('/model-objects', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    update: (
+      id: string,
+      input: {
+        name?: string;
+        internal?: boolean;
+        status?: ObjectStatus;
+        displayDescription?: string;
+        detailedDescriptionMd?: string;
+        techChoiceId?: string | null;
+        tagIds?: string[];
+      },
+    ) =>
+      apiFetch<ModelObject>(`/model-objects/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    remove: (id: string) =>
+      apiFetch<void>(`/model-objects/${id}`, { method: 'DELETE' }),
   },
 
   connections: {
@@ -218,6 +301,21 @@ export const api = {
       apiFetch<ImpliedConnection[]>('/connections/implied', {
         query: { domainId, level },
       }),
+    create: (input: {
+      senderId: string;
+      receiverId: string;
+      viaId?: string | null;
+      direction?: ConnectionDirection;
+      status?: ObjectStatus;
+      lineShape?: LineShape;
+      description?: string;
+    }) =>
+      apiFetch<Connection>('/connections', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    remove: (id: string) =>
+      apiFetch<void>(`/connections/${id}`, { method: 'DELETE' }),
   },
 
   techChoices: {
@@ -227,5 +325,58 @@ export const api = {
 
   tags: {
     list: (domainId: string) => apiFetch<Tag[]>('/tags', { query: { domainId } }),
+  },
+
+  diagrams: {
+    list: (domainId: string) =>
+      apiFetch<DiagramSummary[]>('/diagrams', { query: { domainId } }),
+    get: (id: string) => apiFetch<Diagram>(`/diagrams/${id}`),
+    create: (input: {
+      domainId: string;
+      name: string;
+      level: C4Level;
+      scopeObjectId?: string | null;
+      pinned?: boolean;
+    }) =>
+      apiFetch<Diagram>('/diagrams', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    update: (id: string, input: { name?: string; pinned?: boolean }) =>
+      apiFetch<DiagramSummary>(`/diagrams/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    remove: (id: string) => apiFetch<void>(`/diagrams/${id}`, { method: 'DELETE' }),
+
+    addNode: (
+      diagramId: string,
+      input: { modelObjectId: string; x: number; y: number; w?: number; h?: number },
+    ) =>
+      apiFetch<DiagramNode>(`/diagrams/${diagramId}/nodes`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    updateNode: (
+      nodeId: string,
+      input: { x?: number; y?: number; w?: number; h?: number },
+    ) =>
+      apiFetch<DiagramNode>(`/diagrams/nodes/${nodeId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    removeNode: (nodeId: string) =>
+      apiFetch<void>(`/diagrams/nodes/${nodeId}`, { method: 'DELETE' }),
+
+    addEdge: (
+      diagramId: string,
+      input: { connectionId: string; sourceHandle?: string; targetHandle?: string },
+    ) =>
+      apiFetch<DiagramEdge>(`/diagrams/${diagramId}/edges`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    removeEdge: (edgeId: string) =>
+      apiFetch<void>(`/diagrams/edges/${edgeId}`, { method: 'DELETE' }),
   },
 };

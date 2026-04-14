@@ -100,15 +100,17 @@ Invariants enforced in DB + service layer:
 - Command palette (`Cmd+K`)
 - 12 RTL component tests covering tree rows + toolbar wiring
 
-### Phase 3 — Diagram Canvas MVP
-- React Flow custom nodes per C4 type with **12 anchorable handles** (6 for Actors)
-- Drag from Model Panel → `DiagramNode` only
-- Double-click canvas → quick-create object (model + node atomic)
-- Drag edge into empty space → spawn-object prompt
-- Right panel edits sync globally (TanStack Query invalidation)
-- Delete: **Remove from Diagram** vs **Delete from Model** (with impact warning)
-- Shortcuts: `Shift+S/A/C/R/D`, `Cmd+D`, undo/redo via Immer patches
-- Autosave + dirty state
+### Phase 3 — Diagram Canvas MVP ✅
+- React Flow v12 custom nodes per C4 type with **12 anchorable handles** (6 for Actors)
+- Drag from Model Palette → `DiagramNode` (server validates level + domain)
+- Connect two handles → creates `Connection` + `DiagramEdge` atomically
+- Right panel inspects the selected node and offers "Remove from Diagram"
+  vs "Delete from Model" (with impact warning via `/deletion-impact`)
+- `Shift+S` / `Shift+A` quick-create top-level objects at L1; `Delete` removes
+  the selected node from the active diagram only
+- Debounced position autosave (500 ms) via `useAutosave` with unmount flush
+- Diagrams API: `diagrams`, `diagrams/:id/nodes`, `diagrams/:id/edges`
+- 6 new API service tests + 8 new web canvas tests (54 total across monorepo)
 
 ### Phase 4 — Connections, Routing, Drill-down
 - Direction, status, line shape (curved/straight/square)

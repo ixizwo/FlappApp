@@ -95,3 +95,62 @@ export function assertValidParent(
     );
   }
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// Diagrams (Phase 3)
+// ──────────────────────────────────────────────────────────────────────
+
+export const C4LevelSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
+
+export const DiagramCreateSchema = z.object({
+  domainId: cuid,
+  name: z.string().min(1).max(200),
+  level: C4LevelSchema,
+  scopeObjectId: cuid.nullable().optional(),
+  pinned: z.boolean().default(false),
+});
+export type DiagramCreate = z.infer<typeof DiagramCreateSchema>;
+
+export const DiagramUpdateSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  pinned: z.boolean().optional(),
+});
+export type DiagramUpdate = z.infer<typeof DiagramUpdateSchema>;
+
+export const DiagramNodeCreateSchema = z.object({
+  modelObjectId: cuid,
+  x: z.number(),
+  y: z.number(),
+  w: z.number().positive().optional(),
+  h: z.number().positive().optional(),
+  groupId: cuid.nullable().optional(),
+});
+export type DiagramNodeCreate = z.infer<typeof DiagramNodeCreateSchema>;
+
+export const DiagramNodeUpdateSchema = z.object({
+  x: z.number().optional(),
+  y: z.number().optional(),
+  w: z.number().positive().optional(),
+  h: z.number().positive().optional(),
+  groupId: cuid.nullable().optional(),
+});
+export type DiagramNodeUpdate = z.infer<typeof DiagramNodeUpdateSchema>;
+
+export const DiagramEdgeCreateSchema = z.object({
+  connectionId: cuid,
+  sourceHandle: z.string().optional(),
+  targetHandle: z.string().optional(),
+  waypoints: z
+    .array(z.object({ x: z.number(), y: z.number() }))
+    .optional(),
+});
+export type DiagramEdgeCreate = z.infer<typeof DiagramEdgeCreateSchema>;
+
+export const DiagramEdgeUpdateSchema = z.object({
+  sourceHandle: z.string().nullable().optional(),
+  targetHandle: z.string().nullable().optional(),
+  waypoints: z
+    .array(z.object({ x: z.number(), y: z.number() }))
+    .optional(),
+});
+export type DiagramEdgeUpdate = z.infer<typeof DiagramEdgeUpdateSchema>;

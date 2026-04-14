@@ -225,11 +225,48 @@ async function main() {
     'Emits order.paid events',
   );
 
+  // Sample L1 "Checkout Context" diagram so Phase 3 lands on a canvas
+  // that already has content instead of an empty workspace.
+  const existingDiagram = await prisma.diagram.findFirst({
+    where: { domainId: domain.id, name: 'Checkout Context' },
+  });
+  const diagram =
+    existingDiagram ??
+    (await prisma.diagram.create({
+      data: {
+        domainId: domain.id,
+        name: 'Checkout Context',
+        level: 1,
+        pinned: true,
+      },
+    }));
+
+  async function upsertNode(modelObjectId: string, x: number, y: number) {
+    const existing = await prisma.diagramNode.findUnique({
+      where: {
+        diagramId_modelObjectId: { diagramId: diagram.id, modelObjectId },
+      },
+    });
+    if (existing) return existing;
+    return prisma.diagramNode.create({
+      data: { diagramId: diagram.id, modelObjectId, x, y },
+    });
+  }
+
+  await upsertNode(customer.id, 80, 120);
+  await upsertNode(checkoutSystem.id, 380, 120);
+  await upsertNode(paymentsSystem.id, 700, 120);
+
+  // No concrete edges on the L1 diagram: every seeded Connection has at
+  // least one endpoint below level 1. The canvas surfaces these via the
+  // implied-connections resolver (rendered as dashed edges).
+
   // eslint-disable-next-line no-console
   console.log('Seed complete:', {
     organization: org.slug,
     landscape: landscape.name,
     domain: domain.name,
+    diagram: diagram.name,
   });
 }
 
