@@ -154,3 +154,29 @@ export const DiagramEdgeUpdateSchema = z.object({
     .optional(),
 });
 export type DiagramEdgeUpdate = z.infer<typeof DiagramEdgeUpdateSchema>;
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 4 — Connection edit + drill-down overrides
+// ──────────────────────────────────────────────────────────────────────
+
+export const ConnectionUpdateSchema = z.object({
+  direction: ConnectionDirectionSchema.optional(),
+  status: ObjectStatusSchema.optional(),
+  lineShape: LineShapeSchema.optional(),
+  description: z.string().max(500).nullable().optional(),
+  viaId: cuid.nullable().optional(),
+});
+export type ConnectionUpdate = z.infer<typeof ConnectionUpdateSchema>;
+
+/**
+ * Per-source-diagram override for where a drill-down click lands. Stored in
+ * the `DiagramZoomOverride` table; the default (null target) means "use the
+ * first diagram scoped to the clicked object".
+ */
+export const DiagramZoomOverrideUpsertSchema = z.object({
+  modelObjectId: cuid,
+  targetDiagramId: cuid,
+});
+export type DiagramZoomOverrideUpsert = z.infer<
+  typeof DiagramZoomOverrideUpsertSchema
+>;

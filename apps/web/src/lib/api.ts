@@ -193,6 +193,26 @@ export interface Diagram {
   edges: DiagramEdge[];
 }
 
+export interface DrilldownResolution {
+  kind: 'override' | 'scoped';
+  diagramId: string;
+  diagram: {
+    id: string;
+    name: string;
+    level?: C4Level;
+  };
+}
+
+export interface ZoomOverride {
+  id: string;
+  sourceDiagramId: string;
+  modelObjectId: string;
+  targetDiagramId: string;
+  createdAt: string;
+  modelObject?: { id: string; name: string; type: ObjectType };
+  targetDiagram?: { id: string; name: string; level: C4Level };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Endpoint wrappers
 // ─────────────────────────────────────────────────────────────
@@ -314,6 +334,20 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(input),
       }),
+    update: (
+      id: string,
+      input: {
+        direction?: ConnectionDirection;
+        status?: ObjectStatus;
+        lineShape?: LineShape;
+        description?: string | null;
+        viaId?: string | null;
+      },
+    ) =>
+      apiFetch<Connection>(`/connections/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
     remove: (id: string) =>
       apiFetch<void>(`/connections/${id}`, { method: 'DELETE' }),
   },
@@ -378,5 +412,25 @@ export const api = {
       }),
     removeEdge: (edgeId: string) =>
       apiFetch<void>(`/diagrams/edges/${edgeId}`, { method: 'DELETE' }),
+
+    drilldown: (diagramId: string, objectId: string) =>
+      apiFetch<DrilldownResolution | null>(
+        `/diagrams/${diagramId}/drilldown/${objectId}`,
+      ),
+    listZoomOverrides: (diagramId: string) =>
+      apiFetch<ZoomOverride[]>(`/diagrams/${diagramId}/zoom-overrides`),
+    upsertZoomOverride: (
+      diagramId: string,
+      input: { modelObjectId: string; targetDiagramId: string },
+    ) =>
+      apiFetch<ZoomOverride>(`/diagrams/${diagramId}/zoom-overrides`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    removeZoomOverride: (diagramId: string, objectId: string) =>
+      apiFetch<void>(
+        `/diagrams/${diagramId}/zoom-overrides/${objectId}`,
+        { method: 'DELETE' },
+      ),
   },
 };

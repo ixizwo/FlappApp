@@ -112,13 +112,25 @@ Invariants enforced in DB + service layer:
 - Diagrams API: `diagrams`, `diagrams/:id/nodes`, `diagrams/:id/edges`
 - 6 new API service tests + 8 new web canvas tests (54 total across monorepo)
 
-### Phase 4 — Connections, Routing, Drill-down
-- Direction, status, line shape (curved/straight/square)
-- **Via** intermediary objects render as two segments
-- **Implied connections** projected to higher levels (dashed, click-through)
-- **Drill-down (`+🔍`)**: navigate into the child diagram of an object
-- **Custom zoom landing**: per-source-diagram override table
-- 2k-node fixture perf smoke test
+### Phase 4 — Connections, Routing, Drill-down ✅
+- Custom `c4` React Flow edge with CURVED/STRAIGHT/SQUARE line shapes,
+  per-status stroke palette, and OUTGOING/BIDIRECTIONAL/NONE arrow markers
+- **Via intermediary objects** render as two segments meeting at the via
+  node's centre; when the via isn't placed we fall back to a single line
+  labelled "via X"
+- **Implied connections** fetched via `/connections/implied` and overlaid
+  as dashed click-through edges — deduped against concrete edges, toggled
+  by a "Show implied" checkbox in the canvas toolbar
+- **Edge properties panel**: direction/status/lineShape/description edits
+  via `PATCH /connections/:id`, plus Remove-from-Diagram vs Delete-Connection
+- **Drill-down (`+🔍`)**: `/diagrams/:id/drilldown/:objectId` resolves to a
+  diagram via (1) the `DiagramZoomOverride` table then (2) the first
+  diagram scoped to the clicked object. Triggered from the properties
+  panel for SYSTEM/APP/STORE nodes.
+- **Custom zoom landing**: new `DiagramZoomOverride` Prisma model +
+  `POST/GET/DELETE /diagrams/:id/zoom-overrides` CRUD (+3 service tests)
+- **2k-node perf smoke** in `implied-connections.perf.test.ts` builds a
+  2100-object fixture and pins the resolver under a 500 ms budget
 
 ### Phase 5 — Groups, Flows, Tags, Tech Choices
 - **Groups**: nestable React Flow parent nodes, auto-resize from children, kinds (VPC/Region/Env/Logical), unassigned manual overlays

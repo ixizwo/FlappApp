@@ -143,3 +143,115 @@ describe('DiagramsService.addEdge', () => {
     expect(diagramEdgeCreate).not.toHaveBeenCalled();
   });
 });
+
+describe('DiagramsService.resolveDrilldown', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function makeDrilldownStub(opts: {
+    override?: { targetDiagramId: string; targetDiagram: { id: string; name: string } } | null;
+    scopedDiagram?: { id: string; name: string; level: number } | null;
+  }) {
+    const overrideFindUnique = vi.fn().mockResolvedValue(opts.override ?? null);
+    const diagramFindFirst = vi.fn().mockResolvedValue(opts.scopedDiagram ?? null);
+    const prisma = {
+      diagramZoomOverride: { findUnique: overrideFindUnique },
+      diagram: { findFirst: diagramFindFirst },
+    } as unknown as PrismaService;
+    return { prisma, overrideFindUnique, diagramFindFirst };
+  }
+
+  it('prefers a custom override over the scoped-diagram fallback', async () => {
+    const { prisma, diagramFindFirst } = makeDrilldownStub({
+      override: {
+        targetDiagramId: 'override-d',
+        targetDiagram: { id: 'override-d', name: 'Override' },
+      },
+      scopedDiagram: { id: 'scoped-d', name: 'Scoped', level: 2 },
+    });
+    const svc = new DiagramsService(prisma);
+    const result = await svc.resolveDrilldown('src-d', 'sys-1');
+    expect(result?.kind).toBe('override');
+    expect(result?.diagramId).toBe('override-d');
+    // Override short-circuits — no fallback query needed.
+    expect(diagramFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the first diagram scoped to the object', async () => {
+    const { prisma } = makeDrilldownStub({
+      override: null,
+      scopedDiagram: { id: 'scoped-d', name: 'Scoped', level: 2 },
+    });
+    const svc = new DiagramsService(prisma);
+    const result = await svc.resolveDrilldown('src-d', 'sys-1');
+    expect(result?.kind).toBe('scoped');
+    expect(result?.diagramId).toBe('scoped-d');
+  });
+
+  it('returns null when no override and no scoped diagram exist', async () => {
+    const { prisma } = makeDrilldownStub({ override: null, scopedDiagram: null });
+    const svc = new DiagramsService(prisma);
+    const result = await svc.resolveDrilldown('src-d', 'sys-1');
+    expect(result).toBeNull();
+  });
+});
+
+describe('DiagramsService.upsertZoomOverride', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function makeUpsertStub(opts: {
+    source?: { id: string; domainId: string } | null;
+    target?: { id: string; domainId: string } | null;
+    modelObject?: { id: string; domainId: string } | null;
+  }) {
+    const diagramFindUnique = vi.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+      if (where.id === 'src') return Promise.resolve(opts.source ?? null);
+      if (where.id === 'tgt') return Promise.resolve(opts.target ?? null);
+      return Promise.resolve(null);
+    });
+    const modelObjectFindUnique = vi.fn().mockResolvedValue(opts.modelObject ?? null);
+    const upsert = vi.fn().mockResolvedValue({ id: 'ov-1' });
+    const prisma = {
+      diagram: { findUnique: diagramFindUnique },
+      modelObject: { findUnique: modelObjectFindUnique },
+      diagramZoomOverride: { upsert },
+    } as unknown as PrismaService;
+    return { prisma, upsert };
+  }
+
+  it('rejects an override across different domains', async () => {
+    const { prisma, upsert } = makeUpsertStub({
+      source: { id: 'src', domainId: 'dom-1' },
+      target: { id: 'tgt', domainId: 'dom-2' },
+      modelObject: { id: 'obj-1', domainId: 'dom-1' },
+    });
+    const svc = new DiagramsService(prisma);
+    await expect(
+      svc.upsertZoomOverride('src', { modelObjectId: 'obj-1', targetDiagramId: 'tgt' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects an override pointing at the same diagram', async () => {
+    const { prisma, upsert } = makeUpsertStub({
+      source: { id: 'src', domainId: 'dom-1' },
+      target: { id: 'src', domainId: 'dom-1' },
+      modelObject: { id: 'obj-1', domainId: 'dom-1' },
+    });
+    const svc = new DiagramsService(prisma);
+    await expect(
+      svc.upsertZoomOverride('src', { modelObjectId: 'obj-1', targetDiagramId: 'src' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('upserts when source, target, and object are in the same domain', async () => {
+    const { prisma, upsert } = makeUpsertStub({
+      source: { id: 'src', domainId: 'dom-1' },
+      target: { id: 'tgt', domainId: 'dom-1' },
+      modelObject: { id: 'obj-1', domainId: 'dom-1' },
+    });
+    const svc = new DiagramsService(prisma);
+    await svc.upsertZoomOverride('src', { modelObjectId: 'obj-1', targetDiagramId: 'tgt' });
+    expect(upsert).toHaveBeenCalledOnce();
+  });
+});

@@ -16,6 +16,7 @@ import {
   DiagramNodeCreateSchema,
   DiagramNodeUpdateSchema,
   DiagramUpdateSchema,
+  DiagramZoomOverrideUpsertSchema,
 } from '@flappapp/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { DiagramsService } from './diagrams.service.js';
@@ -111,5 +112,38 @@ export class DiagramsController {
   @HttpCode(204)
   async removeEdge(@Param('edgeId') edgeId: string) {
     await this.svc.removeEdge(edgeId);
+  }
+
+  // ── Drill-down + zoom overrides ──────────────────────────────────
+
+  @Get(':id/drilldown/:objectId')
+  drilldown(
+    @Param('id') diagramId: string,
+    @Param('objectId') objectId: string,
+  ) {
+    return this.svc.resolveDrilldown(diagramId, objectId);
+  }
+
+  @Get(':id/zoom-overrides')
+  listZoomOverrides(@Param('id') diagramId: string) {
+    return this.svc.listZoomOverrides(diagramId);
+  }
+
+  @Post(':id/zoom-overrides')
+  upsertZoomOverride(
+    @Param('id') diagramId: string,
+    @Body(new ZodValidationPipe(DiagramZoomOverrideUpsertSchema))
+    dto: ReturnType<typeof DiagramZoomOverrideUpsertSchema.parse>,
+  ) {
+    return this.svc.upsertZoomOverride(diagramId, dto);
+  }
+
+  @Delete(':id/zoom-overrides/:objectId')
+  @HttpCode(204)
+  async removeZoomOverride(
+    @Param('id') diagramId: string,
+    @Param('objectId') objectId: string,
+  ) {
+    await this.svc.removeZoomOverride(diagramId, objectId);
   }
 }

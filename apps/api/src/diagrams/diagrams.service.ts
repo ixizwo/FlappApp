@@ -11,6 +11,7 @@ import {
   DiagramNodeCreate,
   DiagramNodeUpdate,
   DiagramUpdate,
+  DiagramZoomOverrideUpsert,
   levelOf,
   ObjectType,
 } from '@flappapp/shared';
@@ -268,5 +269,122 @@ export class DiagramsService {
     const existing = await this.prisma.diagramEdge.findUnique({ where: { id: edgeId } });
     if (!existing) throw new NotFoundException(`DiagramEdge ${edgeId} not found`);
     await this.prisma.diagramEdge.delete({ where: { id: edgeId } });
+  }
+
+  // ── Drill-down + custom zoom landing ────────────────────────────
+
+  /**
+   * Resolve the diagram to navigate to when the user drills into
+   * `modelObjectId` from `sourceDiagramId`.
+   *
+   * Resolution order:
+   *   1. A custom override for (sourceDiagram, modelObject).
+   *   2. The first diagram whose `scopeObject` is the clicked object
+   *      (preferring pinned, then the most recently updated).
+   *
+   * Returns `null` if no candidate exists — the caller shows an "offer to
+   * create" prompt instead.
+   */
+  async resolveDrilldown(sourceDiagramId: string, modelObjectId: string) {
+    const override = await this.prisma.diagramZoomOverride.findUnique({
+      where: {
+        sourceDiagramId_modelObjectId: { sourceDiagramId, modelObjectId },
+      },
+      include: { targetDiagram: true },
+    });
+    if (override) {
+      return {
+        kind: 'override' as const,
+        diagramId: override.targetDiagramId,
+        diagram: override.targetDiagram,
+      };
+    }
+
+    // Fallback: the first diagram scoped to this object.
+    const scoped = await this.prisma.diagram.findFirst({
+      where: { scopeObjectId: modelObjectId },
+      orderBy: [{ pinned: 'desc' }, { updatedAt: 'desc' }],
+    });
+    if (scoped) {
+      return { kind: 'scoped' as const, diagramId: scoped.id, diagram: scoped };
+    }
+    return null;
+  }
+
+  async listZoomOverrides(sourceDiagramId: string) {
+    await this.get(sourceDiagramId);
+    return this.prisma.diagramZoomOverride.findMany({
+      where: { sourceDiagramId },
+      include: {
+        modelObject: { select: { id: true, name: true, type: true } },
+        targetDiagram: { select: { id: true, name: true, level: true } },
+      },
+    });
+  }
+
+  async upsertZoomOverride(
+    sourceDiagramId: string,
+    input: DiagramZoomOverrideUpsert,
+  ) {
+    const [source, target] = await Promise.all([
+      this.prisma.diagram.findUnique({
+        where: { id: sourceDiagramId },
+        select: { id: true, domainId: true },
+      }),
+      this.prisma.diagram.findUnique({
+        where: { id: input.targetDiagramId },
+        select: { id: true, domainId: true },
+      }),
+    ]);
+    if (!source) throw new NotFoundException(`Diagram ${sourceDiagramId} not found`);
+    if (!target) {
+      throw new BadRequestException(`targetDiagramId ${input.targetDiagramId} does not exist`);
+    }
+    if (source.domainId !== target.domainId) {
+      throw new BadRequestException('override target must live in the same domain');
+    }
+    if (source.id === target.id) {
+      throw new BadRequestException('override target must differ from the source diagram');
+    }
+
+    const obj = await this.prisma.modelObject.findUnique({
+      where: { id: input.modelObjectId },
+      select: { id: true, domainId: true },
+    });
+    if (!obj) {
+      throw new BadRequestException(`modelObject ${input.modelObjectId} does not exist`);
+    }
+    if (obj.domainId !== source.domainId) {
+      throw new BadRequestException('model object must belong to the diagram domain');
+    }
+
+    return this.prisma.diagramZoomOverride.upsert({
+      where: {
+        sourceDiagramId_modelObjectId: {
+          sourceDiagramId,
+          modelObjectId: input.modelObjectId,
+        },
+      },
+      update: { targetDiagramId: input.targetDiagramId },
+      create: {
+        sourceDiagramId,
+        modelObjectId: input.modelObjectId,
+        targetDiagramId: input.targetDiagramId,
+      },
+    });
+  }
+
+  async removeZoomOverride(sourceDiagramId: string, modelObjectId: string) {
+    const existing = await this.prisma.diagramZoomOverride.findUnique({
+      where: {
+        sourceDiagramId_modelObjectId: { sourceDiagramId, modelObjectId },
+      },
+    });
+    if (!existing) throw new NotFoundException('zoom override not found');
+    await this.prisma.diagramZoomOverride.delete({
+      where: {
+        sourceDiagramId_modelObjectId: { sourceDiagramId, modelObjectId },
+      },
+    });
   }
 }

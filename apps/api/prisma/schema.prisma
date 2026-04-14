@@ -129,6 +129,7 @@ model ModelObject {
 
   diagramNodes DiagramNode[]
   tagLinks     ModelObjectTag[]
+  zoomOverrides DiagramZoomOverride[]
 
   // "Unique within scope" per PRD §4.1. Null parents collapse to null —
   // Postgres treats NULLs as distinct, which matches "top-level objects
@@ -186,9 +187,35 @@ model Diagram {
   groups Group[]
   flows  Flow[]
 
+  // Custom zoom landing — overrides where a drill-down click lands when
+  // coming *from* this diagram.
+  zoomOverridesFrom DiagramZoomOverride[] @relation("ZoomOverrideSource")
+  zoomOverridesTo   DiagramZoomOverride[] @relation("ZoomOverrideTarget")
+
   @@index([domainId])
   @@index([level])
   @@index([pinned])
+  @@index([scopeObjectId])
+}
+
+// Per-source-diagram drill-down override. When the user clicks the +🔍 icon
+// on an object on `sourceDiagram`, we consult this table first; if there's
+// a row for (sourceDiagram, modelObject), we navigate to `targetDiagram`
+// instead of the default "first diagram scoped to this object".
+model DiagramZoomOverride {
+  id              String @id @default(cuid())
+  sourceDiagramId String
+  modelObjectId   String
+  targetDiagramId String
+  createdAt       DateTime @default(now())
+
+  sourceDiagram Diagram     @relation("ZoomOverrideSource", fields: [sourceDiagramId], references: [id], onDelete: Cascade)
+  targetDiagram Diagram     @relation("ZoomOverrideTarget", fields: [targetDiagramId], references: [id], onDelete: Cascade)
+  modelObject   ModelObject @relation(fields: [modelObjectId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceDiagramId, modelObjectId])
+  @@index([sourceDiagramId])
+  @@index([modelObjectId])
 }
 
 model DiagramNode {
