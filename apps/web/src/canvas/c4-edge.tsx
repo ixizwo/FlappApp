@@ -38,6 +38,8 @@ export interface C4EdgeData extends Record<string, unknown> {
   implied: boolean;
   /** How many concrete connections rolled up into this implied edge. */
   impliedCount?: number;
+  /** Phase 5: dim the edge during flow playback when it isn't in the active step. */
+  dimmed?: boolean;
 }
 
 type Pt = { x: number; y: number };
@@ -244,7 +246,7 @@ export function C4Edge(props: EdgeProps) {
   const baseStyle: React.CSSProperties = {
     stroke: stroke.color,
     strokeWidth: selected ? 2.5 : 1.6,
-    opacity: stroke.opacity,
+    opacity: d.dimmed ? Math.min(stroke.opacity, 0.15) : stroke.opacity,
     ...(stroke.dashArray ? { strokeDasharray: stroke.dashArray } : {}),
     cursor: d.implied ? 'pointer' : 'default',
   };

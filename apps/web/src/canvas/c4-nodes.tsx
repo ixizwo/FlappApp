@@ -22,8 +22,13 @@ export interface C4NodeData {
   name: string;
   description: string | null;
   techChoice: string | null;
+  techIcon: string | null;
   status: string;
   selected: boolean;
+  /** Phase 5: set true when a Flow is playing and this node is NOT highlighted. */
+  dimmed?: boolean;
+  /** Phase 5: set true when the tag-bar focus filter excludes this node. */
+  tagFiltered?: boolean;
   [key: string]: unknown;
 }
 
@@ -110,6 +115,27 @@ function statusRing(status: string) {
 const baseNode =
   'relative flex h-full w-full flex-col rounded border px-3 py-2 text-xs text-surface-100 shadow-sm transition-colors';
 
+/**
+ * Phase 5: combine dim state from the flow playback hook and the tag bar
+ * focus filter. `dimmed` comes from "this object isn't in the active step";
+ * `tagFiltered` comes from "this object lacks the focused tag". Either one
+ * is enough to fade the node to ~20% opacity.
+ */
+function dimClass(data: C4NodeData): string {
+  if (data.dimmed || data.tagFiltered) return 'opacity-20 grayscale';
+  return '';
+}
+
+/** Inline tech-choice chip that combines the icon and the name. */
+function TechChip({ icon, name }: { icon: string | null; name: string }) {
+  return (
+    <div className="mt-0.5 inline-flex w-fit items-center gap-1 rounded bg-surface-800 px-1 py-0.5 text-[9px] text-surface-200">
+      {icon && <span className="text-[10px]">{icon}</span>}
+      <span>{name}</span>
+    </div>
+  );
+}
+
 export function ActorNode({ data, selected }: C4Node) {
   return (
     <div
@@ -118,6 +144,7 @@ export function ActorNode({ data, selected }: C4Node) {
         baseNode,
         'items-center justify-center rounded-full border-amber-400/60 bg-amber-500/10',
         statusRing(data.status),
+        dimClass(data),
         selected && 'border-indigo-400 ring-2 ring-indigo-400/50',
       )}
     >
@@ -141,6 +168,7 @@ export function SystemNode({ data, selected }: C4Node) {
         baseNode,
         'border-indigo-400/60 bg-indigo-500/10',
         statusRing(data.status),
+        dimClass(data),
         selected && 'border-indigo-400 ring-2 ring-indigo-400/50',
       )}
     >
@@ -166,6 +194,7 @@ export function AppNode({ data, selected }: C4Node) {
         baseNode,
         'border-sky-400/60 bg-sky-500/10',
         statusRing(data.status),
+        dimClass(data),
         selected && 'border-indigo-400 ring-2 ring-indigo-400/50',
       )}
     >
@@ -174,11 +203,7 @@ export function AppNode({ data, selected }: C4Node) {
         <span>{typeGlyph('APP')}</span> App
       </div>
       <div className="truncate text-sm font-semibold">{data.name}</div>
-      {data.techChoice && (
-        <div className="mt-0.5 inline-block w-fit rounded bg-surface-800 px-1 py-0.5 text-[9px] text-surface-200">
-          {data.techChoice}
-        </div>
-      )}
+      {data.techChoice && <TechChip icon={data.techIcon} name={data.techChoice} />}
     </div>
   );
 }
@@ -191,6 +216,7 @@ export function StoreNode({ data, selected }: C4Node) {
         baseNode,
         'border-emerald-400/60 bg-emerald-500/10',
         statusRing(data.status),
+        dimClass(data),
         selected && 'border-indigo-400 ring-2 ring-indigo-400/50',
       )}
     >
@@ -199,11 +225,7 @@ export function StoreNode({ data, selected }: C4Node) {
         <span>{typeGlyph('STORE')}</span> Store
       </div>
       <div className="truncate text-sm font-semibold">{data.name}</div>
-      {data.techChoice && (
-        <div className="mt-0.5 inline-block w-fit rounded bg-surface-800 px-1 py-0.5 text-[9px] text-surface-200">
-          {data.techChoice}
-        </div>
-      )}
+      {data.techChoice && <TechChip icon={data.techIcon} name={data.techChoice} />}
     </div>
   );
 }
@@ -216,6 +238,7 @@ export function ComponentNode({ data, selected }: C4Node) {
         baseNode,
         'border-pink-400/60 bg-pink-500/10',
         statusRing(data.status),
+        dimClass(data),
         selected && 'border-indigo-400 ring-2 ring-indigo-400/50',
       )}
     >

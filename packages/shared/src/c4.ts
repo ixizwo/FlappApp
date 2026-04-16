@@ -42,6 +42,22 @@ export const LineShape = {
 } as const;
 export type LineShape = (typeof LineShape)[keyof typeof LineShape];
 
+/**
+ * Phase 5 — Groups are visual containers on a diagram.
+ *
+ * - VPC / REGION / ENV model infrastructure boundaries so operators can see
+ *   network and environment context at a glance.
+ * - LOGICAL is a free-form grouping for anything that doesn't map to a
+ *   physical boundary (domains, sub-teams, planned work).
+ */
+export const GroupKind = {
+  VPC: 'VPC',
+  REGION: 'REGION',
+  ENV: 'ENV',
+  LOGICAL: 'LOGICAL',
+} as const;
+export type GroupKind = (typeof GroupKind)[keyof typeof GroupKind];
+
 export type C4Level = 1 | 2 | 3;
 
 /** Map an object type to its C4 level. */

@@ -5,9 +5,11 @@ import {
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
+import { TagAssignmentSchema, TagUpdateSchema } from '@flappapp/shared';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { TagsService } from './tags.service.js';
@@ -39,9 +41,26 @@ export class TagsController {
     return this.svc.create(dto);
   }
 
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(TagUpdateSchema))
+    dto: ReturnType<typeof TagUpdateSchema.parse>,
+  ) {
+    return this.svc.update(id, dto);
+  }
+
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id') id: string) {
     await this.svc.remove(id);
+  }
+
+  @Post('assign')
+  assign(
+    @Body(new ZodValidationPipe(TagAssignmentSchema))
+    dto: ReturnType<typeof TagAssignmentSchema.parse>,
+  ) {
+    return this.svc.assignBulk(dto);
   }
 }

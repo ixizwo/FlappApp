@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConnectionsModule } from './connections/connections.module.js';
 import { DiagramsModule } from './diagrams/diagrams.module.js';
 import { DomainsModule } from './domains/domains.module.js';
+import { FlowsModule } from './flows/flows.module.js';
+import { GroupsModule } from './groups/groups.module.js';
 import { HealthController } from './health/health.controller.js';
 import { LandscapesModule } from './landscapes/landscapes.module.js';
 import { ModelObjectsModule } from './model-objects/model-objects.module.js';
@@ -26,6 +28,8 @@ import { TechChoicesModule } from './tech-choices/tech-choices.module.js';
     ModelObjectsModule,
     ConnectionsModule,
     DiagramsModule,
+    GroupsModule,
+    FlowsModule,
     TagsModule,
     TechChoicesModule,
   ],

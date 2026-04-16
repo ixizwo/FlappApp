@@ -42,7 +42,10 @@ import {
   type Connection as ApiConnection,
   type Diagram,
   type DiagramNode as ApiDiagramNode,
+  type Flow,
+  type Group,
   type ModelObject,
+  type Tag,
 } from '../lib/api.ts';
 import {
   C4EdgeDefs,
@@ -50,7 +53,9 @@ import {
   type C4EdgeData,
 } from '../canvas/c4-edge.tsx';
 import { c4NodeTypes } from '../canvas/c4-nodes.tsx';
+import { groupNodeType } from '../canvas/group-node.tsx';
 import { useAutosave } from '../canvas/use-autosave.ts';
+import { useFlowPlayback } from '../canvas/flow-playback.ts';
 import { typeGlyph, typeTextClass } from '../lib/ui.ts';
 
 /**
@@ -109,20 +114,54 @@ function CanvasInner() {
     enabled: !!domainId && !!diagramQuery.data,
   });
 
-  // Hydrate RF state whenever fresh diagram data or implied projections
-  // come back. Implied edges are rendered from the same state array so
-  // React Flow can route them through the same node positions.
+  // Phase 5 — groups, flows, and tags for this diagram/domain.
+  const groupsQuery = useQuery({
+    queryKey: ['groups', diagramId],
+    queryFn: () => api.groups.list(diagramId),
+    enabled: !!diagramId,
+  });
+  const flowsQuery = useQuery({
+    queryKey: ['flows', diagramId],
+    queryFn: () => api.flows.list(diagramId),
+    enabled: !!diagramId,
+  });
+  const tagsQuery = useQuery({
+    queryKey: ['tags', domainId],
+    queryFn: () => api.tags.list(domainId),
+    enabled: !!domainId,
+  });
+
+  // Phase 5 — flow playback + tag bar focus.
+  const playback = useFlowPlayback();
+  const [focusTagId, setFocusTagId] = useState<string | null>(null);
+
+  // Hydrate RF state whenever fresh diagram data, groups, or implied projections
+  // come back. Group nodes are RF "parent" nodes whose children are the
+  // DiagramNodes assigned to them — React Flow uses `parentId` on child
+  // nodes plus a large zIndex-less node with `type: 'group'` to render the
+  // visual container.
   useEffect(() => {
     if (!diagramQuery.data) return;
     const data = diagramQuery.data;
-    // DiagramEdge rows reference ModelObject ids via Connection, but our
-    // RF node ids are DiagramNode ids. Build a per-diagram lookup so we
-    // can map endpoint ids correctly. Edges whose endpoints aren't both
-    // on the diagram are dropped — the implied-edges layer surfaces
-    // those cross-level links instead.
     const nodeByObjectId = new Map<string, string>();
     for (const n of data.nodes) nodeByObjectId.set(n.modelObjectId, n.id);
-    setNodes(data.nodes.map(apiNodeToRfNode));
+
+    // Phase 5: render groups as React Flow parent nodes positioned *before*
+    // their children so the z-order is correct.
+    const groupNodes: Node[] = (groupsQuery.data ?? []).map(
+      (g: Group): Node => ({
+        id: `group-${g.id}`,
+        type: 'group',
+        position: { x: g.x, y: g.y },
+        style: { width: g.w, height: g.h },
+        data: { name: g.name, kind: g.kind },
+        ...(g.parentGroupId
+          ? { parentId: `group-${g.parentGroupId}`, extent: 'parent' as const }
+          : {}),
+      }),
+    );
+
+    setNodes([...groupNodes, ...data.nodes.map(apiNodeToRfNode)]);
 
     const concrete = data.edges
       .map((e) => apiEdgeToRfEdge(e, nodeByObjectId))
@@ -167,7 +206,7 @@ function CanvasInner() {
     }
 
     setEdges([...implied, ...concrete]);
-  }, [diagramQuery.data, impliedQuery.data, showImplied]);
+  }, [diagramQuery.data, groupsQuery.data, impliedQuery.data, showImplied]);
 
   // Debounced autosave for node position changes.
   const positionSave = useAutosave<{ x: number; y: number }>(async (batch) => {
@@ -473,25 +512,66 @@ function CanvasInner() {
       .filter((o) => !existingObjectIds.has(o.id));
   }, [objects, diagram, existingObjectIds]);
 
-  // Inject per-node callbacks (drill-down) into RF node data. We do this
-  // in a useMemo layer that wraps the positional state, so drag updates
-  // still flow through `setNodes(applyNodeChanges(...))` but the
-  // rendered RF payload has the callbacks every frame.
+  // Build a lookup: objectId → Set<tagId>, used for tag-bar focus filtering.
+  const objectTagIndex = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const obj of objectsQuery.data ?? []) {
+      const tags = new Set<string>();
+      for (const tl of obj.tagLinks ?? []) tags.add(tl.tag.id);
+      m.set(obj.id, tags);
+    }
+    return m;
+  }, [objectsQuery.data]);
+
+  // Inject per-node callbacks (drill-down), Phase 5 dimming (flow playback
+  // + tag-bar focus), and tech-choice chips into RF node data.
   const nodesWithActions = useMemo(
     () =>
       nodes.map((n) => {
+        // Group nodes don't need callbacks or dimming — skip.
+        if (n.type === 'group') return n;
         const apiNode = diagramQuery.data?.nodes.find((dn) => dn.id === n.id);
+        const objId = apiNode?.modelObjectId;
+        const dimmed =
+          playback.active && objId
+            ? !playback.isActiveNode(n.id)
+            : false;
+        const tagFiltered =
+          focusTagId && objId
+            ? !(objectTagIndex.get(objId)?.has(focusTagId) ?? false)
+            : false;
         return {
           ...n,
           data: {
             ...(n.data as Record<string, unknown>),
+            dimmed,
+            tagFiltered,
             onDrilldown: apiNode
               ? () => drilldown(apiNode.modelObjectId)
               : undefined,
           },
         };
       }),
-    [nodes, diagramQuery.data, drilldown],
+    [nodes, diagramQuery.data, drilldown, playback, focusTagId, objectTagIndex],
+  );
+
+  // Phase 5: dim edges during flow playback.
+  const edgesWithDim = useMemo(
+    () =>
+      edges.map((e) => {
+        if (!playback.active) return e;
+        const d = e.data as C4EdgeData | undefined;
+        const connectionId = d?.connectionId ?? '';
+        const isDim = !playback.isActiveEdge(connectionId);
+        return { ...e, data: { ...d, dimmed: isDim } };
+      }),
+    [edges, playback],
+  );
+
+  // Merge the C4 node types with the group node type.
+  const allNodeTypes = useMemo(
+    () => ({ ...c4NodeTypes, ...groupNodeType }) as unknown as NodeTypes,
+    [],
   );
 
   return (
@@ -501,6 +581,7 @@ function CanvasInner() {
         diagramLevel={diagram?.level ?? 1}
       />
       <div className="relative flex min-w-0 flex-1 flex-col">
+        {/* ── Top toolbar ─────────────────────────────────────────── */}
         <div className="flex shrink-0 items-center gap-3 border-b border-surface-800 bg-surface-900/40 px-4 py-2">
           <Link
             to={`/domains/${domainId}/diagrams`}
@@ -525,10 +606,74 @@ function CanvasInner() {
             />
             <span>Show implied</span>
           </label>
+          {/* Phase 5: flow playback dropdown */}
+          {flowsQuery.data && flowsQuery.data.length > 0 && !playback.active && (
+            <select
+              onChange={(e) => {
+                const f = flowsQuery.data?.find(
+                  (fl: Flow) => fl.id === e.target.value,
+                );
+                if (f) playback.start(f);
+              }}
+              defaultValue=""
+              className="rounded border border-surface-800 bg-surface-950 px-1 py-0.5 text-[10px] text-surface-100"
+            >
+              <option value="" disabled>
+                Play flow…
+              </option>
+              {flowsQuery.data.map((f: Flow) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          )}
           <span className="text-[10px] text-surface-200">
             {positionSave.isDirty() ? 'saving…' : 'saved'}
           </span>
         </div>
+
+        {/* ── Phase 5: Flow playback bar (appears when a flow is active) */}
+        {playback.active && playback.step && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-indigo-500/30 bg-indigo-950/40 px-4 py-1.5">
+            <button
+              type="button"
+              disabled={!playback.canBack}
+              onClick={playback.back}
+              className="rounded border border-surface-800 px-2 py-0.5 text-[10px] text-surface-100 disabled:opacity-30"
+            >
+              Back
+            </button>
+            <span className="text-xs font-semibold text-indigo-200">
+              {playback.step.title}
+            </span>
+            <span className="text-[10px] text-surface-200">
+              Step {playback.stepIndex + 1} / {playback.totalSteps}
+            </span>
+            {playback.step.description && (
+              <span className="text-[10px] text-surface-200">
+                — {playback.step.description}
+              </span>
+            )}
+            <button
+              type="button"
+              disabled={!playback.canNext}
+              onClick={playback.next}
+              className="rounded border border-surface-800 px-2 py-0.5 text-[10px] text-surface-100 disabled:opacity-30"
+            >
+              Next
+            </button>
+            <button
+              type="button"
+              onClick={playback.stop}
+              className="ml-auto rounded border border-rose-800 px-2 py-0.5 text-[10px] text-rose-300"
+            >
+              Stop
+            </button>
+          </div>
+        )}
+
+        {/* ── Canvas ──────────────────────────────────────────────── */}
         <div
           className="flex-1"
           onDrop={onDrop}
@@ -538,8 +683,8 @@ function CanvasInner() {
           <C4EdgeDefs />
           <ReactFlow
             nodes={nodesWithActions}
-            edges={edges}
-            nodeTypes={c4NodeTypes as unknown as NodeTypes}
+            edges={edgesWithDim}
+            nodeTypes={allNodeTypes}
             edgeTypes={c4EdgeTypes as unknown as EdgeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
@@ -566,6 +711,50 @@ function CanvasInner() {
             <MiniMap zoomable pannable className="!bg-surface-900" />
           </ReactFlow>
         </div>
+
+        {/* ── Phase 5: Bottom tag bar — focus mode ────────────────── */}
+        {(tagsQuery.data ?? []).length > 0 && (
+          <div className="flex shrink-0 items-center gap-1.5 border-t border-surface-800 bg-surface-900/60 px-4 py-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-surface-200">
+              Tags
+            </span>
+            {(tagsQuery.data ?? []).map((tag: Tag & { _count?: { objects: number } }) => (
+              <button
+                key={tag.id}
+                type="button"
+                onClick={() =>
+                  setFocusTagId((prev) => (prev === tag.id ? null : tag.id))
+                }
+                className={`rounded-full border px-2 py-0.5 text-[10px] transition-colors ${
+                  focusTagId === tag.id
+                    ? 'border-indigo-400 bg-indigo-500/20 text-indigo-200'
+                    : 'border-surface-800 bg-surface-950 text-surface-200 hover:border-surface-600'
+                }`}
+                style={
+                  focusTagId !== tag.id
+                    ? { borderLeftColor: tag.color, borderLeftWidth: 3 }
+                    : undefined
+                }
+              >
+                {tag.name}
+                {tag._count?.objects !== undefined && (
+                  <span className="ml-1 text-surface-200/60">
+                    {tag._count.objects}
+                  </span>
+                )}
+              </button>
+            ))}
+            {focusTagId && (
+              <button
+                type="button"
+                onClick={() => setFocusTagId(null)}
+                className="ml-1 text-[10px] text-surface-200 underline"
+              >
+                clear
+              </button>
+            )}
+          </div>
+        )}
       </div>
       {selectedEdge ? (
         <EdgePropertiesPanel
@@ -637,7 +826,7 @@ function CanvasInner() {
 }
 
 function apiNodeToRfNode(node: ApiDiagramNode): Node {
-  return {
+  const rf: Node = {
     id: node.id,
     type: node.modelObject.type,
     position: { x: node.x, y: node.y },
@@ -646,6 +835,7 @@ function apiNodeToRfNode(node: ApiDiagramNode): Node {
       name: node.modelObject.name,
       description: node.modelObject.displayDescription,
       techChoice: node.modelObject.techChoice?.name ?? null,
+      techIcon: node.modelObject.techChoice?.icon ?? null,
       status: node.modelObject.status as ObjectStatus,
       selected: false,
     },
@@ -654,6 +844,11 @@ function apiNodeToRfNode(node: ApiDiagramNode): Node {
       height: node.h,
     },
   };
+  if (node.groupId) {
+    rf.parentId = `group-${node.groupId}`;
+    rf.extent = 'parent';
+  }
+  return rf;
 }
 
 function apiEdgeToRfEdge(

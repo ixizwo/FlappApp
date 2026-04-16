@@ -10,6 +10,7 @@
 import type {
   C4Level,
   ConnectionDirection,
+  GroupKind,
   LineShape,
   ObjectStatus,
   ObjectType,
@@ -213,6 +214,42 @@ export interface ZoomOverride {
   targetDiagram?: { id: string; name: string; level: C4Level };
 }
 
+// Phase 5 — Groups, Flows, Tags (write-side), Tech Choices (write-side)
+
+export interface Group {
+  id: string;
+  diagramId: string;
+  parentGroupId: string | null;
+  name: string;
+  kind: GroupKind;
+  autosize: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  nodes?: { id: string }[];
+}
+
+export interface FlowStep {
+  id: string;
+  flowId: string;
+  order: number;
+  title: string;
+  description: string | null;
+  nodeHighlights: { diagramNodeId: string }[];
+  edgeHighlights: { connectionId: string }[];
+}
+
+export interface Flow {
+  id: string;
+  diagramId: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  steps: FlowStep[];
+}
+
 // ─────────────────────────────────────────────────────────────
 // Endpoint wrappers
 // ─────────────────────────────────────────────────────────────
@@ -355,10 +392,133 @@ export const api = {
   techChoices: {
     list: (category?: string) =>
       apiFetch<TechChoice[]>('/tech-choices', { query: { category } }),
+    create: (input: { name: string; category: string; icon: string }) =>
+      apiFetch<TechChoice>('/tech-choices', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    update: (id: string, input: { name?: string; category?: string; icon?: string }) =>
+      apiFetch<TechChoice>(`/tech-choices/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
   },
 
   tags: {
-    list: (domainId: string) => apiFetch<Tag[]>('/tags', { query: { domainId } }),
+    list: (domainId: string) =>
+      apiFetch<(Tag & { _count?: { objects: number } })[]>('/tags', {
+        query: { domainId },
+      }),
+    create: (input: { domainId: string; name: string; color?: string }) =>
+      apiFetch<Tag>('/tags', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    update: (id: string, input: { name?: string; color?: string }) =>
+      apiFetch<Tag>(`/tags/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    remove: (id: string) => apiFetch<void>(`/tags/${id}`, { method: 'DELETE' }),
+    assign: (input: { modelObjectIds: string[]; tagId: string; assign: boolean }) =>
+      apiFetch<{ tagId: string; count: number }>('/tags/assign', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+  },
+
+  groups: {
+    list: (diagramId: string) =>
+      apiFetch<Group[]>('/groups', { query: { diagramId } }),
+    create: (
+      diagramId: string,
+      input: {
+        name: string;
+        kind: GroupKind;
+        parentGroupId?: string | null;
+        autosize?: boolean;
+        x?: number;
+        y?: number;
+        w?: number;
+        h?: number;
+      },
+    ) =>
+      apiFetch<Group>('/groups', {
+        method: 'POST',
+        query: { diagramId },
+        body: JSON.stringify(input),
+      }),
+    update: (
+      id: string,
+      input: {
+        name?: string;
+        kind?: GroupKind;
+        parentGroupId?: string | null;
+        autosize?: boolean;
+        x?: number;
+        y?: number;
+        w?: number;
+        h?: number;
+      },
+    ) =>
+      apiFetch<Group>(`/groups/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    remove: (id: string) => apiFetch<void>(`/groups/${id}`, { method: 'DELETE' }),
+    assignMembership: (input: { diagramNodeId: string; groupId: string | null }) =>
+      apiFetch<DiagramNode>('/groups/membership', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+  },
+
+  flows: {
+    list: (diagramId: string) =>
+      apiFetch<Flow[]>('/flows', { query: { diagramId } }),
+    get: (id: string) => apiFetch<Flow>(`/flows/${id}`),
+    create: (diagramId: string, input: { name: string; description?: string }) =>
+      apiFetch<Flow>('/flows', {
+        method: 'POST',
+        query: { diagramId },
+        body: JSON.stringify(input),
+      }),
+    update: (id: string, input: { name?: string; description?: string | null }) =>
+      apiFetch<Flow>(`/flows/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    remove: (id: string) => apiFetch<void>(`/flows/${id}`, { method: 'DELETE' }),
+    addStep: (
+      flowId: string,
+      input: {
+        order: number;
+        title: string;
+        description?: string;
+        diagramNodeIds?: string[];
+        connectionIds?: string[];
+      },
+    ) =>
+      apiFetch<FlowStep>(`/flows/${flowId}/steps`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    updateStep: (
+      stepId: string,
+      input: {
+        order?: number;
+        title?: string;
+        description?: string | null;
+        diagramNodeIds?: string[];
+        connectionIds?: string[];
+      },
+    ) =>
+      apiFetch<FlowStep>(`/flows/steps/${stepId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    removeStep: (stepId: string) =>
+      apiFetch<void>(`/flows/steps/${stepId}`, { method: 'DELETE' }),
   },
 
   diagrams: {

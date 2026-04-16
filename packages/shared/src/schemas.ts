@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   ConnectionDirection,
+  GroupKind,
   LineShape,
   ObjectStatus,
   ObjectType,
@@ -14,6 +15,7 @@ export const ObjectTypeSchema = z.nativeEnum(ObjectType);
 export const ObjectStatusSchema = z.nativeEnum(ObjectStatus);
 export const ConnectionDirectionSchema = z.nativeEnum(ConnectionDirection);
 export const LineShapeSchema = z.nativeEnum(LineShape);
+export const GroupKindSchema = z.nativeEnum(GroupKind);
 
 /** Max length for the compact "display" description per PRD §4.1. */
 export const DISPLAY_DESCRIPTION_MAX = 120;
@@ -180,3 +182,107 @@ export const DiagramZoomOverrideUpsertSchema = z.object({
 export type DiagramZoomOverrideUpsert = z.infer<
   typeof DiagramZoomOverrideUpsertSchema
 >;
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 5 — Groups, Flows, Tags, Tech Choices
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Groups are visual containers on a diagram. They may nest (one group can
+ * live inside another) and are sized either manually or via the autosize
+ * flag that shrinks the group to fit its current child nodes.
+ */
+export const GroupCreateSchema = z.object({
+  name: z.string().min(1).max(200),
+  kind: GroupKindSchema.default(GroupKind.LOGICAL),
+  parentGroupId: cuid.nullable().optional(),
+  autosize: z.boolean().default(true),
+  x: z.number().optional(),
+  y: z.number().optional(),
+  w: z.number().positive().optional(),
+  h: z.number().positive().optional(),
+});
+export type GroupCreate = z.infer<typeof GroupCreateSchema>;
+
+export const GroupUpdateSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  kind: GroupKindSchema.optional(),
+  parentGroupId: cuid.nullable().optional(),
+  autosize: z.boolean().optional(),
+  x: z.number().optional(),
+  y: z.number().optional(),
+  w: z.number().positive().optional(),
+  h: z.number().positive().optional(),
+});
+export type GroupUpdate = z.infer<typeof GroupUpdateSchema>;
+
+/** Assign / unassign a DiagramNode to a group. `groupId = null` clears it. */
+export const GroupMembershipSchema = z.object({
+  diagramNodeId: cuid,
+  groupId: cuid.nullable(),
+});
+export type GroupMembership = z.infer<typeof GroupMembershipSchema>;
+
+/**
+ * Flows tell a story on top of a diagram. Each FlowStep highlights a subset
+ * of diagram nodes and connections; the client dims everything else during
+ * playback.
+ */
+export const FlowCreateSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(500).optional(),
+});
+export type FlowCreate = z.infer<typeof FlowCreateSchema>;
+
+export const FlowUpdateSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().max(500).nullable().optional(),
+});
+export type FlowUpdate = z.infer<typeof FlowUpdateSchema>;
+
+export const FlowStepCreateSchema = z.object({
+  order: z.number().int().min(0),
+  title: z.string().min(1).max(200),
+  description: z.string().max(500).optional(),
+  diagramNodeIds: z.array(cuid).default([]),
+  connectionIds: z.array(cuid).default([]),
+});
+export type FlowStepCreate = z.infer<typeof FlowStepCreateSchema>;
+
+export const FlowStepUpdateSchema = z.object({
+  order: z.number().int().min(0).optional(),
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(500).nullable().optional(),
+  diagramNodeIds: z.array(cuid).optional(),
+  connectionIds: z.array(cuid).optional(),
+});
+export type FlowStepUpdate = z.infer<typeof FlowStepUpdateSchema>;
+
+/** Tags — per-domain colour-coded labels, many-to-many with ModelObject. */
+export const TagUpdateSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, 'color must be a 6-digit hex')
+    .optional(),
+});
+export type TagUpdate = z.infer<typeof TagUpdateSchema>;
+
+/** Multi-assign (for the tag bar focus mode). */
+export const TagAssignmentSchema = z.object({
+  modelObjectIds: z.array(cuid).min(1),
+  tagId: cuid,
+  assign: z.boolean(),
+});
+export type TagAssignment = z.infer<typeof TagAssignmentSchema>;
+
+/** Tech choices — write-side (admin catalog edits). */
+export const TechChoiceCreateSchema = z.object({
+  name: z.string().min(1).max(100),
+  category: z.string().min(1).max(100),
+  icon: z.string().min(1).max(50),
+});
+export type TechChoiceCreate = z.infer<typeof TechChoiceCreateSchema>;
+
+export const TechChoiceUpdateSchema = TechChoiceCreateSchema.partial();
+export type TechChoiceUpdate = z.infer<typeof TechChoiceUpdateSchema>;
