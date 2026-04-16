@@ -61,6 +61,7 @@ model Domain {
   diagrams    Diagram[]
   tags        Tag[]
   snapshots   Snapshot[]
+  drafts      Draft[]
   ownerTeamId String?
   ownerTeam   Team?         @relation(fields: [ownerTeamId], references: [id])
 
@@ -408,14 +409,45 @@ model Membership {
 // ──────────────────────────────────────────────────────────────────────
 
 model Snapshot {
-  id        String   @id @default(cuid())
-  domainId  String
-  name      String
-  payload   Json
-  createdAt DateTime @default(now())
-  domain    Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  domainId    String
+  name        String
+  description String?
+  version     Int
+  payload     Json
+  createdAt   DateTime @default(now())
+  domain      Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([domainId, version])
+  @@index([domainId])
+}
+
+enum DraftStatus {
+  OPEN
+  PROMOTED
+  DISCARDED
+}
+
+/// Phase 6: copy-on-write drafts. When a user creates a draft, the
+/// current live model (objects + connections + diagrams) is serialised
+/// into `payload` (same format as Snapshot). Edits are applied against
+/// the JSON payload in-memory. Promoting a draft replaces the live
+/// model in a transaction and creates a new Snapshot.
+model Draft {
+  id          String      @id @default(cuid())
+  domainId    String
+  name        String
+  status      DraftStatus @default(OPEN)
+  basedOnSnapshotId String?
+  payload     Json
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  promotedAt  DateTime?
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
 
   @@index([domainId])
+  @@index([status])
 }
 
 model AuditLog {

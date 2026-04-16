@@ -286,3 +286,71 @@ export type TechChoiceCreate = z.infer<typeof TechChoiceCreateSchema>;
 
 export const TechChoiceUpdateSchema = TechChoiceCreateSchema.partial();
 export type TechChoiceUpdate = z.infer<typeof TechChoiceUpdateSchema>;
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 6 — Snapshots & Drafts
+// ──────────────────────────────────────────────────────────────────────
+
+export const DraftStatus = {
+  OPEN: 'OPEN',
+  PROMOTED: 'PROMOTED',
+  DISCARDED: 'DISCARDED',
+} as const;
+export type DraftStatus = (typeof DraftStatus)[keyof typeof DraftStatus];
+export const DraftStatusSchema = z.nativeEnum(DraftStatus);
+
+/**
+ * The payload stored inside both Snapshot.payload and Draft.payload.
+ * It's a point-in-time capture of everything that makes up a Domain's
+ * architecture model — objects, connections, diagrams, groups, flows.
+ *
+ * The shape is validated loosely (Json column), but typed here so the
+ * diff utility and the web diff viewer can rely on stable fields.
+ */
+export interface DomainPayload {
+  objects: {
+    id: string;
+    parentId: string | null;
+    type: ObjectType;
+    name: string;
+    internal: boolean;
+    status: ObjectStatus;
+    displayDescription: string | null;
+    techChoiceId: string | null;
+    tagIds: string[];
+  }[];
+  connections: {
+    id: string;
+    senderId: string;
+    receiverId: string;
+    viaId: string | null;
+    direction: ConnectionDirection;
+    status: ObjectStatus;
+    lineShape: LineShape;
+    description: string | null;
+  }[];
+  diagrams: {
+    id: string;
+    name: string;
+    level: number;
+    scopeObjectId: string | null;
+    pinned: boolean;
+  }[];
+}
+
+export const SnapshotCreateSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(500).optional(),
+});
+export type SnapshotCreate = z.infer<typeof SnapshotCreateSchema>;
+
+export const DraftCreateSchema = z.object({
+  name: z.string().min(1).max(200),
+});
+export type DraftCreate = z.infer<typeof DraftCreateSchema>;
+
+export const DraftUpdateSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  payload: z.record(z.unknown()).optional(),
+});
+export type DraftUpdate = z.infer<typeof DraftUpdateSchema>;

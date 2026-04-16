@@ -10,6 +10,9 @@
 import type {
   C4Level,
   ConnectionDirection,
+  DomainDiff,
+  DomainPayload,
+  DraftStatus,
   GroupKind,
   LineShape,
   ObjectStatus,
@@ -248,6 +251,36 @@ export interface Flow {
   createdAt: string;
   updatedAt: string;
   steps: FlowStep[];
+}
+
+// Phase 6 — Snapshots & Drafts
+
+export interface SnapshotSummary {
+  id: string;
+  domainId: string;
+  name: string;
+  description: string | null;
+  version: number;
+  createdAt: string;
+}
+
+export interface Snapshot extends SnapshotSummary {
+  payload: DomainPayload;
+}
+
+export interface DraftSummary {
+  id: string;
+  domainId: string;
+  name: string;
+  status: DraftStatus;
+  basedOnSnapshotId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  promotedAt: string | null;
+}
+
+export interface Draft extends DraftSummary {
+  payload: DomainPayload;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -592,5 +625,46 @@ export const api = {
         `/diagrams/${diagramId}/zoom-overrides/${objectId}`,
         { method: 'DELETE' },
       ),
+  },
+
+  snapshots: {
+    list: (domainId: string) =>
+      apiFetch<SnapshotSummary[]>('/snapshots', { query: { domainId } }),
+    get: (id: string) => apiFetch<Snapshot>(`/snapshots/${id}`),
+    create: (domainId: string, input: { name: string; description?: string }) =>
+      apiFetch<Snapshot>('/snapshots', {
+        method: 'POST',
+        query: { domainId },
+        body: JSON.stringify(input),
+      }),
+    diff: (beforeId: string, afterId: string) =>
+      apiFetch<DomainDiff>(`/snapshots/diff/${beforeId}/${afterId}`),
+    diffLive: (snapshotId: string) =>
+      apiFetch<DomainDiff>(`/snapshots/${snapshotId}/diff-live`),
+    live: (domainId: string) =>
+      apiFetch<DomainPayload>(`/snapshots/live/${domainId}`),
+  },
+
+  drafts: {
+    list: (domainId: string) =>
+      apiFetch<DraftSummary[]>('/drafts', { query: { domainId } }),
+    get: (id: string) => apiFetch<Draft>(`/drafts/${id}`),
+    create: (domainId: string, input: { name: string }) =>
+      apiFetch<Draft>('/drafts', {
+        method: 'POST',
+        query: { domainId },
+        body: JSON.stringify(input),
+      }),
+    update: (id: string, input: { name?: string; payload?: unknown }) =>
+      apiFetch<Draft>(`/drafts/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    previewPromote: (id: string) =>
+      apiFetch<DomainDiff>(`/drafts/${id}/preview-promote`),
+    promote: (id: string) =>
+      apiFetch<Draft>(`/drafts/${id}/promote`, { method: 'POST' }),
+    discard: (id: string) =>
+      apiFetch<Draft>(`/drafts/${id}/discard`, { method: 'POST' }),
   },
 };

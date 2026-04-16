@@ -7,6 +7,7 @@ import { DiagramsView } from '../pages/DiagramsView.tsx';
 import { HomeView } from '../pages/HomeView.tsx';
 import { ModelObjectsView } from '../pages/ModelObjectsView.tsx';
 import { NoDomainView } from '../pages/NoDomainView.tsx';
+import { VersionsView } from '../pages/VersionsView.tsx';
 
 /**
  * Route map. All model views are scoped under a single Domain id, which
@@ -33,6 +34,7 @@ const routes: RouteObject[] = [
           { path: 'diagrams/:diagramId', element: <DiagramCanvasView /> },
           { path: 'dependencies', element: <DependenciesView /> },
           { path: 'dependencies/:objectId', element: <DependenciesView /> },
+          { path: 'versions', element: <VersionsView /> },
         ],
       },
       { path: '*', element: <Navigate to="/" replace /> },

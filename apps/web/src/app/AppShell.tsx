@@ -76,6 +76,7 @@ function LeftNav() {
         <SidebarLink to={base ? `${base}/connections` : '/no-domain'} label="Connections" />
         <SidebarLink to={base ? `${base}/diagrams` : '/no-domain'} label="Diagrams" />
         <SidebarLink to={base ? `${base}/dependencies` : '/no-domain'} label="Dependencies" />
+        <SidebarLink to={base ? `${base}/versions` : '/no-domain'} label="Versions" />
       </ul>
       <h2 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wider text-surface-200">
         Admin
